@@ -12,106 +12,65 @@ jobs:
       - name: Setup Cloudflared
         uses: AnimMouse/setup-cloudflared@v2
 
-      - name: Connect to Your PC via Tailscale
-        run: |
-          Write-Host "============================================" -ForegroundColor Cyan
-          Write-Host "🔗 CONNECTING TO YOUR PC VIA TAILSCALE" -ForegroundColor Green
-          Write-Host "============================================" -ForegroundColor Cyan
-          
-          Write-Host "Installing Tailscale..." -ForegroundColor Yellow
-          choco install tailscale -y
-          
-          Write-Host "Connecting to your Tailscale network..." -ForegroundColor Yellow
-          tailscale up --authkey ${{ secrets.TAILSCALE_AUTHKEY }}
-          
-          Write-Host "Waiting for connection..." -ForegroundColor Yellow
-          Start-Sleep -Seconds 20
-          
-          Write-Host ""
-          Write-Host "============================================" -ForegroundColor Green
-          Write-Host "✅ TAILSCALE CONNECTED!" -ForegroundColor Green
-          Write-Host "============================================" -ForegroundColor Green
-          Write-Host ""
-          Write-Host "📋 YOUR PC DETAILS:" -ForegroundColor Yellow
-          Write-Host "   Your PC Tailscale IP: 100.118.15.31" -ForegroundColor Green
-          Write-Host "   Your Public IP: 83.244.36.131" -ForegroundColor Green
-          Write-Host "   ✅ This IP is NOT BLOCKED!" -ForegroundColor Green
-          Write-Host "============================================" -ForegroundColor Green
-          Write-Host ""
-          
-          # Test connection to your PC
-          Write-Host "Testing connection to your PC (100.118.15.31)..." -ForegroundColor Yellow
-          Test-Connection -ComputerName 100.118.15.31 -Count 2 -Quiet
-          if ($?) {
-              Write-Host "✅ Your PC is reachable via Tailscale!" -ForegroundColor Green
-          } else {
-              Write-Host "⚠️ Could not ping your PC - but continuing anyway..." -ForegroundColor Yellow
-          }
-
       - name: Enable Windows RDP
         run: |
-          Write-Host "Enabling RDP..." -ForegroundColor Yellow
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          Write-Host "✅ RDP Enabled!" -ForegroundColor Green
+          Write-Host "Enabling RDP..."
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -ErrorAction SilentlyContinue
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop" -ErrorAction SilentlyContinue
+          Write-Host "✅ RDP Enabled!"
 
       - name: Set Administrator Password
         run: |
-          Write-Host "Setting password..." -ForegroundColor Yellow
           Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "P@ssw0rd123!" -Force)
-          Write-Host "✅ Password Configured!" -ForegroundColor Green
+          Write-Host "✅ Password Configured!"
 
-      - name: Start Tunnel Through Your PC
+      - name: Start Cloudflare Tunnel
         run: |
-          Write-Host "============================================" -ForegroundColor Cyan
-          Write-Host "🚀 STARTING TUNNEL THROUGH YOUR PC" -ForegroundColor Green
-          Write-Host "============================================" -ForegroundColor Cyan
-          
-          # YOUR PC'S TAILSCALE IP (from admin console)
-          $YOUR_PC_IP = "100.118.15.31"
-          
-          Write-Host "📡 Routing through: $YOUR_PC_IP (YOUR PC)" -ForegroundColor Yellow
-          Write-Host "🌐 Your Public IP: 83.244.36.131" -ForegroundColor Yellow
-          Write-Host "✅ This IP is NOT BLOCKED!" -ForegroundColor Green
+          Write-Host "============================================"
+          Write-Host "🚀 Starting Cloudflare Tunnel"
+          Write-Host "============================================"
           Write-Host ""
           
-          # Start tunnel pointing to YOUR PC (via Tailscale)
-          Start-Process -NoNewWindow -FilePath "cloudflared" -ArgumentList "tunnel --url tcp://$YOUR_PC_IP:3389 --protocol http2" -RedirectStandardOutput "tunnel.log" -RedirectStandardError "tunnel_error.log"
+          # Start cloudflared and capture output to a file
+          Start-Process -NoNewWindow -FilePath "cloudflared" -ArgumentList "tunnel --url tcp://localhost:3389 --protocol http2" -RedirectStandardOutput "tunnel.log" -RedirectStandardError "tunnel_error.log"
           
-          Write-Host "⏳ Waiting for tunnel to initialize (35 seconds)..." -ForegroundColor Cyan
+          Write-Host "⏳ Waiting for tunnel to start (35 seconds)..."
           Start-Sleep -Seconds 35
           
-          $log = Get-Content "tunnel.log" -Raw -ErrorAction SilentlyContinue
-          $err = Get-Content "tunnel_error.log" -Raw -ErrorAction SilentlyContinue
+          # Read the log file
+          $logContent = Get-Content "tunnel.log" -Raw -ErrorAction SilentlyContinue
+          $errorLog = Get-Content "tunnel_error.log" -Raw -ErrorAction SilentlyContinue
           
-          if ($log -match "https://([a-zA-Z0-9-]+)\.trycloudflare\.com") {
-              $url = $matches[0]
+          # Try to find the tunnel URL
+          if ($logContent -match "https://([a-zA-Z0-9-]+)\.trycloudflare\.com") {
+              $tunnelUrl = $matches[0]
               Write-Host ""
-              Write-Host "============================================" -ForegroundColor Green
-              Write-Host "✅✅✅ TUNNEL URL FOUND ✅✅✅" -ForegroundColor Green
-              Write-Host "============================================" -ForegroundColor Green
-              Write-Host "🔗 $url" -ForegroundColor Cyan
-              Write-Host "============================================" -ForegroundColor Green
+              Write-Host "============================================"
+              Write-Host "✅✅✅ TUNNEL URL FOUND ✅✅✅"
+              Write-Host "============================================"
+              Write-Host "🔗 $tunnelUrl"
+              Write-Host "============================================"
               Write-Host ""
-              Write-Host "📋 CONNECTION DETAILS:" -ForegroundColor Yellow
-              Write-Host "   URL: $url" -ForegroundColor White
-              Write-Host "   USERNAME: runneradmin" -ForegroundColor White
-              Write-Host "   PASSWORD: P@ssw0rd123!" -ForegroundColor White
-              Write-Host "   PORT: 3389" -ForegroundColor White
-              Write-Host "   🔥 YOUR IP: 83.244.36.131 (NOT BLOCKED!)" -ForegroundColor Green
-              Write-Host "============================================" -ForegroundColor Green
+              Write-Host "📋 CONNECTION DETAILS:"
+              Write-Host "   URL: $tunnelUrl"
+              Write-Host "   USERNAME: runneradmin"
+              Write-Host "   PASSWORD: P@ssw0rd123!"
+              Write-Host "   PORT: 3389"
+              Write-Host "============================================"
           } else {
               Write-Host ""
-              Write-Host "⚠️ URL not found. Showing logs:" -ForegroundColor Yellow
-              Write-Host "=== TUNNEL OUTPUT ===" -ForegroundColor Cyan
-              Write-Host $log
-              Write-Host "=== ERROR OUTPUT ===" -ForegroundColor Red
-              Write-Host $err
+              Write-Host "⚠️ URL not found in logs. Showing full log:" -ForegroundColor Yellow
+              Write-Host ""
+              Write-Host "=== TUNNEL LOG ==="
+              Write-Host $logContent
+              Write-Host ""
+              Write-Host "=== ERROR LOG ==="
+              Write-Host $errorLog
           }
           
           Write-Host ""
-          Write-Host "⏳ Keeping session alive..." -ForegroundColor Cyan
+          Write-Host "⏳ Keeping session alive..."
           while ($true) {
-              Write-Host "✓ Active - $(Get-Date -Format 'HH:mm:ss')" -ForegroundColor Green
+              Write-Host "✓ Active - $(Get-Date -Format 'HH:mm:ss')"
               Start-Sleep -Seconds 60
           }
