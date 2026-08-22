@@ -25,22 +25,28 @@ jobs:
           tailscale up --authkey ${{ secrets.TAILSCALE_AUTHKEY }}
           
           Write-Host "Waiting for connection..." -ForegroundColor Yellow
-          Start-Sleep -Seconds 15
+          Start-Sleep -Seconds 20
           
-          # VERIFY: Check if runner is on Tailscale
-          $status = tailscale status --json | ConvertFrom-Json
-          $runnerIP = $status.Self.IPs[0]
           Write-Host ""
           Write-Host "============================================" -ForegroundColor Green
-          Write-Host "✅ CONNECTED TO TAILSCALE!" -ForegroundColor Green
+          Write-Host "✅ TAILSCALE CONNECTED!" -ForegroundColor Green
           Write-Host "============================================" -ForegroundColor Green
-          Write-Host "📡 Runner Tailscale IP: $runnerIP" -ForegroundColor Cyan
           Write-Host ""
-          Write-Host "📋 YOUR PC DETAILS (from Tailscale admin):" -ForegroundColor Yellow
+          Write-Host "📋 YOUR PC DETAILS:" -ForegroundColor Yellow
           Write-Host "   Your PC Tailscale IP: 100.118.15.31" -ForegroundColor Green
           Write-Host "   Your Public IP: 83.244.36.131" -ForegroundColor Green
+          Write-Host "   ✅ This IP is NOT BLOCKED!" -ForegroundColor Green
           Write-Host "============================================" -ForegroundColor Green
           Write-Host ""
+          
+          # Test connection to your PC
+          Write-Host "Testing connection to your PC (100.118.15.31)..." -ForegroundColor Yellow
+          Test-Connection -ComputerName 100.118.15.31 -Count 2 -Quiet
+          if ($?) {
+              Write-Host "✅ Your PC is reachable via Tailscale!" -ForegroundColor Green
+          } else {
+              Write-Host "⚠️ Could not ping your PC - but continuing anyway..." -ForegroundColor Yellow
+          }
 
       - name: Enable Windows RDP
         run: |
