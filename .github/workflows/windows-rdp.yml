@@ -15,12 +15,10 @@ jobs:
       - name: Enable Windows RDP
         run: |
           Write-Host "Killing any existing RDP sessions..."
-          # Try to kill sessions safely
           tsdiscon 0 /server:localhost 2>$null
           tsdiscon 1 /server:localhost 2>$null
           tsdiscon 2 /server:localhost 2>$null
           
-          # Enable RDP
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -ErrorAction SilentlyContinue
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop" -ErrorAction SilentlyContinue
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1 -ErrorAction SilentlyContinue
@@ -38,30 +36,45 @@ jobs:
           Write-Host "============================================"
           Write-Host "🚀 WINDOWS RDP - CLOUDFLARE TUNNEL"
           Write-Host "============================================"
-
-          # استخدام طريقة أكثر استقراراً
-          cloudflared tunnel --url tcp://localhost:3389 --protocol http2 > tunnel.log 2>&1 &
-
-          Write-Host "⏳ Waiting for tunnel (35 seconds)..."
-          Start-Sleep -Seconds 35
-
-          $url = Select-String -Path "tunnel.log" -Pattern "https?://[a-zA-Z0-9-]+\.trycloudflare\.com" | Select-Object -First 1
-
-          if ($url) {
-              Write-Host "✅ TUNNEL URL: $($url.Matches.Value)" -ForegroundColor Green
-          } else {
-              Write-Host "⚠️ لم يتم العثور على URL. Log كامل:" -ForegroundColor Yellow
-              Get-Content tunnel.log -Raw
-          }
-
           Write-Host ""
-          Write-Host "📋 CONNECTION DETAILS:"
-          Write-Host "   USERNAME: runneradmin"
-          Write-Host "   PASSWORD: P@ssw0rd123!"
-          Write-Host "============================================"
-
-          while ($true) { Start-Sleep -Seconds 60; Write-Host "✓ Active" }
+          
+          # Run cloudflared in a new process and capture output
+          $process = Start-Process -NoNewWindow -PassThru -FilePath "cloudflared" -ArgumentList "tunnel --url tcp://localhost:3389 --protocol http2" -RedirectStandardOutput "tunnel.log" -RedirectStandardError "tunnel_error.log"
+          
+          Write-Host "⏳ Waiting for tunnel to start (30 seconds)..."
+          Start-Sleep -Seconds 30
+          
+          # Read the log file
+          $logContent = Get-Content "tunnel.log" -Raw -ErrorAction SilentlyContinue
+          $errorLog = Get-Content "tunnel_error.log" -Raw -ErrorAction SilentlyContinue
+          
+          # Try to find the tunnel URL
+          if ($logContent -match "https://([a-zA-Z0-9-]+)\.trycloudflare\.com") {
+              $tunnelUrl = $matches[0]
+              Write-Host ""
+              Write-Host "✅ TUNNEL URL: $tunnelUrl" -ForegroundColor Green
+              Write-Host ""
+              Write-Host "📋 CONNECTION DETAILS:"
+              Write-Host "   URL: $tunnelUrl"
+              Write-Host "   USERNAME: runneradmin"
+              Write-Host "   PASSWORD: P@ssw0rd123!"
+              Write-Host "   OS: Windows Server 2022"
+              Write-Host "   CPU: 4 cores"
+              Write-Host "   RAM: 16GB"
+              Write-Host "============================================"
+          } else {
+              Write-Host "⚠️ Tunnel URL not found in logs. Showing full log:" -ForegroundColor Yellow
+              Write-Host ""
+              Write-Host "=== TUNNEL LOG ==="
+              Write-Host $logContent
+              Write-Host "=== ERROR LOG ==="
+              Write-Host $errorLog
+              Write-Host "=================="
+          }
+          
+          Write-Host ""
+          Write-Host "⏳ Keeping session alive..."
           while ($true) {
-            Start-Sleep -Seconds 60
-            Write-Host "✓ Active - $(Get-Date -Format 'HH:mm:ss')"
+              Write-Host "✓ Active - $(Get-Date -Format 'HH:mm:ss')"
+              Start-Sleep -Seconds 60
           }
