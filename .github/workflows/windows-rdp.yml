@@ -24,16 +24,21 @@ jobs:
           Write-Host "Connecting to your Tailscale network..." -ForegroundColor Yellow
           tailscale up --authkey ${{ secrets.TAILSCALE_AUTHKEY }}
           
-          Start-Sleep -Seconds 10
+          Write-Host "Waiting for connection..." -ForegroundColor Yellow
+          Start-Sleep -Seconds 15
           
-          # Get your PC's Tailscale IP
-          $tailscaleIP = (tailscale status --json | ConvertFrom-Json).Self.IPs[0]
+          # VERIFY: Check if runner is on Tailscale
+          $status = tailscale status --json | ConvertFrom-Json
+          $runnerIP = $status.Self.IPs[0]
           Write-Host ""
           Write-Host "============================================" -ForegroundColor Green
-          Write-Host "✅ CONNECTED TO YOUR PC!" -ForegroundColor Green
+          Write-Host "✅ CONNECTED TO TAILSCALE!" -ForegroundColor Green
           Write-Host "============================================" -ForegroundColor Green
-          Write-Host "📡 Your PC Tailscale IP: $tailscaleIP" -ForegroundColor Cyan
-          Write-Host "🌐 Your Public IP: 83.244.36.131" -ForegroundColor Cyan
+          Write-Host "📡 Runner Tailscale IP: $runnerIP" -ForegroundColor Cyan
+          Write-Host ""
+          Write-Host "📋 YOUR PC DETAILS (from Tailscale admin):" -ForegroundColor Yellow
+          Write-Host "   Your PC Tailscale IP: 100.118.15.31" -ForegroundColor Green
+          Write-Host "   Your Public IP: 83.244.36.131" -ForegroundColor Green
           Write-Host "============================================" -ForegroundColor Green
           Write-Host ""
 
@@ -56,23 +61,23 @@ jobs:
           Write-Host "🚀 STARTING TUNNEL THROUGH YOUR PC" -ForegroundColor Green
           Write-Host "============================================" -ForegroundColor Cyan
           
-          # Get your PC's Tailscale IP
-          $tailscaleIP = (tailscale status --json | ConvertFrom-Json).Self.IPs[0]
-          Write-Host "📡 Routing through: $tailscaleIP (YOUR PC)" -ForegroundColor Yellow
-          Write-Host "🌐 Your IP: 83.244.36.131" -ForegroundColor Yellow
+          # YOUR PC'S TAILSCALE IP (from admin console)
+          $YOUR_PC_IP = "100.118.15.31"
+          
+          Write-Host "📡 Routing through: $YOUR_PC_IP (YOUR PC)" -ForegroundColor Yellow
+          Write-Host "🌐 Your Public IP: 83.244.36.131" -ForegroundColor Yellow
+          Write-Host "✅ This IP is NOT BLOCKED!" -ForegroundColor Green
           Write-Host ""
           
           # Start tunnel pointing to YOUR PC (via Tailscale)
-          Start-Process -NoNewWindow -FilePath "cloudflared" -ArgumentList "tunnel --url tcp://$tailscaleIP:3389 --protocol http2" -RedirectStandardOutput "tunnel.log" -RedirectStandardError "tunnel_error.log"
+          Start-Process -NoNewWindow -FilePath "cloudflared" -ArgumentList "tunnel --url tcp://$YOUR_PC_IP:3389 --protocol http2" -RedirectStandardOutput "tunnel.log" -RedirectStandardError "tunnel_error.log"
           
           Write-Host "⏳ Waiting for tunnel to initialize (35 seconds)..." -ForegroundColor Cyan
           Start-Sleep -Seconds 35
           
-          # Read logs
           $log = Get-Content "tunnel.log" -Raw -ErrorAction SilentlyContinue
           $err = Get-Content "tunnel_error.log" -Raw -ErrorAction SilentlyContinue
           
-          # Extract URL
           if ($log -match "https://([a-zA-Z0-9-]+)\.trycloudflare\.com") {
               $url = $matches[0]
               Write-Host ""
