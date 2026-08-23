@@ -6,7 +6,7 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 9999
+    timeout-minutes: 360
 
     steps:
       - name: Setup Cloudflared
@@ -14,10 +14,17 @@ jobs:
 
       - name: Enable Windows RDP
         run: |
-          Write-Host "Enabling RDP..."
+          Write-Host "Killing any existing RDP sessions..."
+          tsdiscon 0 /server:localhost 2>$null
+          tsdiscon 1 /server:localhost 2>$null
+          tsdiscon 2 /server:localhost 2>$null
+          
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -ErrorAction SilentlyContinue
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop" -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1 -ErrorAction SilentlyContinue
+          
           Write-Host "✅ RDP Enabled!"
+        continue-on-error: true
 
       - name: Set Administrator Password
         run: |
@@ -26,52 +33,48 @@ jobs:
 
       - name: Start Cloudflare Tunnel
         run: |
-          Write-Host "============================================" -ForegroundColor Cyan
-          Write-Host "🚀 STARTING TUNNEL THROUGH YOUR PC" -ForegroundColor Green
-          Write-Host "============================================" -ForegroundColor Cyan
-          
-          # YOUR PC'S TAILSCALE IP
-          $YOUR_PC_IP = "100.118.15.31"
-          
-          Write-Host "📡 Routing through: $YOUR_PC_IP (YOUR PC)" -ForegroundColor Yellow
-          Write-Host "🌐 Your Public IP: 83.244.36.131" -ForegroundColor Yellow
-          Write-Host "✅ This IP is NOT BLOCKED!" -ForegroundColor Green
+          Write-Host "============================================"
+          Write-Host "🚀 WINDOWS RDP - CLOUDFLARE TUNNEL"
+          Write-Host "============================================"
           Write-Host ""
           
-          # Run cloudflared directly (not Start-Process)
-          cloudflared tunnel --url tcp://$YOUR_PC_IP:3389 --protocol http2 > tunnel.log 2>&1 &
+          # Run cloudflared in a new process and capture output
+          $process = Start-Process -NoNewWindow -PassThru -FilePath "cloudflared" -ArgumentList "tunnel --url tcp://localhost:3389 --protocol http2" -RedirectStandardOutput "tunnel.log" -RedirectStandardError "tunnel_error.log"
           
-          Write-Host "⏳ Waiting for tunnel to initialize (35 seconds)..." -ForegroundColor Cyan
-          Start-Sleep -Seconds 35
+          Write-Host "⏳ Waiting for tunnel to start (30 seconds)..."
+          Start-Sleep -Seconds 30
           
-          $log = Get-Content "tunnel.log" -Raw -ErrorAction SilentlyContinue
+          # Read the log file
+          $logContent = Get-Content "tunnel.log" -Raw -ErrorAction SilentlyContinue
+          $errorLog = Get-Content "tunnel_error.log" -Raw -ErrorAction SilentlyContinue
           
-          if ($log -match "https://([a-zA-Z0-9-]+)\.trycloudflare\.com") {
-              $url = $matches[0]
+          # Try to find the tunnel URL
+          if ($logContent -match "https://([a-zA-Z0-9-]+)\.trycloudflare\.com") {
+              $tunnelUrl = $matches[0]
               Write-Host ""
-              Write-Host "============================================" -ForegroundColor Green
-              Write-Host "✅✅✅ TUNNEL URL FOUND ✅✅✅" -ForegroundColor Green
-              Write-Host "============================================" -ForegroundColor Green
-              Write-Host "🔗 $url" -ForegroundColor Cyan
-              Write-Host "============================================" -ForegroundColor Green
+              Write-Host "✅ TUNNEL URL: $tunnelUrl" -ForegroundColor Green
               Write-Host ""
-              Write-Host "📋 CONNECTION DETAILS:" -ForegroundColor Yellow
-              Write-Host "   URL: $url" -ForegroundColor White
-              Write-Host "   USERNAME: runneradmin" -ForegroundColor White
-              Write-Host "   PASSWORD: P@ssw0rd123!" -ForegroundColor White
-              Write-Host "   PORT: 3389" -ForegroundColor White
-              Write-Host "   🔥 YOUR IP: 83.244.36.131 (NOT BLOCKED!)" -ForegroundColor Green
-              Write-Host "============================================" -ForegroundColor Green
+              Write-Host "📋 CONNECTION DETAILS:"
+              Write-Host "   URL: $tunnelUrl"
+              Write-Host "   USERNAME: runneradmin"
+              Write-Host "   PASSWORD: P@ssw0rd123!"
+              Write-Host "   OS: Windows Server 2022"
+              Write-Host "   CPU: 4 cores"
+              Write-Host "   RAM: 16GB"
+              Write-Host "============================================"
           } else {
+              Write-Host "⚠️ Tunnel URL not found in logs. Showing full log:" -ForegroundColor Yellow
               Write-Host ""
-              Write-Host "⚠️ URL not found. Showing logs:" -ForegroundColor Yellow
-              Write-Host "=== TUNNEL LOG ===" -ForegroundColor Cyan
-              Write-Host $log
+              Write-Host "=== TUNNEL LOG ==="
+              Write-Host $logContent
+              Write-Host "=== ERROR LOG ==="
+              Write-Host $errorLog
+              Write-Host "=================="
           }
           
           Write-Host ""
-          Write-Host "⏳ Keeping session alive..." -ForegroundColor Cyan
+          Write-Host "⏳ Keeping session alive..."
           while ($true) {
-              Write-Host "✓ Active - $(Get-Date -Format 'HH:mm:ss')" -ForegroundColor Green
+              Write-Host "✓ Active - $(Get-Date -Format 'HH:mm:ss')"
               Start-Sleep -Seconds 60
           }
